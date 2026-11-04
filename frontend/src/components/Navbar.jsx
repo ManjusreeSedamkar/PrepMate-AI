@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Brain, KeyRound, History, PlusCircle, LayoutDashboard, Menu, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Sparkles, Brain, History, PlusCircle, LayoutDashboard, Menu, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { useInterview } from '../context/InterviewContext';
 
 export default function Navbar() {
@@ -7,14 +7,13 @@ export default function Navbar() {
     activeTab,
     setActiveTab,
     serverConfig,
-    customApiKey,
-    setIsKeyModalOpen,
     questions,
   } = useInterview();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const hasKey = serverConfig?.has_server_api_key || Boolean(customApiKey);
+  const isServerReady = serverConfig?.has_server_api_key;
+  const isServerOffline = serverConfig?.status === 'offline';
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -29,7 +28,7 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-slate-200/80">
+    <header className="sticky top-0 z-40 w-full bg-white/85 backdrop-blur-md border-b border-slate-200/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -49,8 +48,8 @@ export default function Navbar() {
                   AI
                 </span>
               </div>
-              <p className="text-[10px] text-slate-600 hidden sm:block -mt-0.5">
-                Interview Preparation Assistant
+              <p className="text-[10px] text-slate-500 hidden sm:block -mt-0.5 font-medium">
+                AI Interview Preparation Assistant
               </p>
             </div>
           </div>
@@ -77,41 +76,38 @@ export default function Navbar() {
             })}
           </nav>
 
-          {/* Right Action: API Status & Key Settings */}
+          {/* Backend Status Pill */}
           <div className="hidden sm:flex items-center gap-3">
-            <button
-              onClick={() => setIsKeyModalOpen(true)}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all shadow-xs ${
-                hasKey
-                  ? 'bg-emerald-50/80 text-emerald-800 border-emerald-200 hover:bg-emerald-100/80'
-                  : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 animate-pulse'
+            <div
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border shadow-xs ${
+                isServerReady
+                  ? 'bg-emerald-50/80 text-emerald-800 border-emerald-200'
+                  : isServerOffline
+                  ? 'bg-rose-50 text-rose-800 border-rose-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
               }`}
-              title="Configure Gemini API Key"
             >
-              {hasKey ? (
+              {isServerReady ? (
                 <>
                   <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Gemini Connected</span>
+                  <span>Backend AI Connected</span>
+                </>
+              ) : isServerOffline ? (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Backend Offline</span>
                 </>
               ) : (
                 <>
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Configure API Key</span>
+                  <span>Backend Needs GEMINI_API_KEY</span>
                 </>
               )}
-              <KeyRound className="w-3.5 h-3.5 ml-0.5 opacity-60" />
-            </button>
+            </div>
           </div>
 
           {/* Mobile Menu Button */}
           <div className="flex md:hidden items-center gap-2">
-            <button
-              onClick={() => setIsKeyModalOpen(true)}
-              className="p-2 text-slate-600 hover:text-indigo-600 rounded-lg hover:bg-slate-100"
-              title="API Key"
-            >
-              <KeyRound className="w-4 h-4" />
-            </button>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100"

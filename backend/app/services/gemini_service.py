@@ -26,27 +26,24 @@ logger = logging.getLogger(__name__)
 class GeminiService:
     def __init__(self):
         self._client: Optional[genai.Client] = None
-        self._current_key: Optional[str] = None
 
-    def get_client(self, override_key: Optional[str] = None) -> genai.Client:
+    def get_client(self) -> genai.Client:
         """
-        Retrieves or initializes the Google Gen AI client.
-        Allows passing an override key (from client header if configured)
-        or falls back to environment variable GEMINI_API_KEY.
+        Retrieves or initializes the Google Gen AI client using backend GEMINI_API_KEY.
+        Never accepts client-supplied keys.
         """
-        api_key = override_key.strip() if override_key else settings.GEMINI_API_KEY
+        api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
         if not api_key:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Gemini API Key is not configured. Please add GEMINI_API_KEY in your "
+                    "Backend GEMINI_API_KEY is not configured. Please add GEMINI_API_KEY to your "
                     "backend .env file or Render environment variables."
                 )
             )
         
-        if self._client is None or self._current_key != api_key:
+        if self._client is None:
             self._client = genai.Client(api_key=api_key)
-            self._current_key = api_key
             
         return self._client
 
@@ -62,7 +59,6 @@ class GeminiService:
         text = raw_text.strip()
         # Remove ```json and ``` if present
         if "```" in text:
-            # Match ```json ... ``` or ``` ... ```
             match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
             if match:
                 text = match.group(1).strip()
@@ -88,14 +84,12 @@ class GeminiService:
             
             raise ValueError(f"Could not parse valid JSON from AI response: {text[:200]}") from e
 
-    async def generate_questions(
-        self, req: GenerateQuestionsRequest, api_key: Optional[str] = None
-    ) -> GenerateQuestionsResponse:
+    async def generate_questions(self, req: GenerateQuestionsRequest) -> GenerateQuestionsResponse:
         """
         Generates realistic, non-repetitive interview questions tailored to
         role, seniority, interview type, and specific topics.
         """
-        client = self.get_client(api_key)
+        client = self.get_client()
 
         prompt = f"""
 You are an expert technical interviewer and hiring manager at a top-tier tech company.
@@ -137,7 +131,6 @@ Output MUST be a valid JSON array of objects with the following schema:
             )
             data = self._extract_json(response.text)
             
-            # Normalize if response is wrapped in an object like {"questions": [...]}
             if isinstance(data, dict):
                 questions_raw = data.get("questions", data.get("items", []))
             elif isinstance(data, list):
@@ -172,14 +165,12 @@ Output MUST be a valid JSON array of objects with the following schema:
             logger.error(f"Error generating questions: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate questions: {str(e)}")
 
-    async def evaluate_answer(
-        self, req: EvaluateAnswerRequest, api_key: Optional[str] = None
-    ) -> EvaluateAnswerResponse:
+    async def evaluate_answer(self, req: EvaluateAnswerRequest) -> EvaluateAnswerResponse:
         """
         Evaluates a candidate's answer on correctness, clarity, technical depth, and completeness.
         Produces scores, key strengths, missing concepts, and concrete improvement tips.
         """
-        client = self.get_client(api_key)
+        client = self.get_client()
 
         prompt = f"""
 You are an expert interviewer evaluating a candidate for the following role:
@@ -262,14 +253,12 @@ Output MUST be a valid JSON object with this exact schema:
             logger.error(f"Error evaluating answer: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to evaluate answer: {str(e)}")
 
-    async def stream_evaluate_answer(
-        self, req: EvaluateAnswerRequest, api_key: Optional[str] = None
-    ) -> AsyncGenerator[str, None]:
+    async def stream_evaluate_answer(self, req: EvaluateAnswerRequest) -> AsyncGenerator[str, None]:
         """
-        Streams evaluation analysis using Server-Sent Events (SSE).
+        Streams evaluation analysis live using Server-Sent Events (SSE).
         Yields chunk tokens as they are produced by Gemini, then emits the final structured JSON event.
         """
-        client = self.get_client(api_key)
+        client = self.get_client()
 
         prompt = f"""
 You are an expert interviewer evaluating a candidate for the following role:
@@ -302,27 +291,23 @@ Evaluate this answer. First, provide your live expert commentary. Then, conclude
                 accumulated_text += chunk_text
                 yield json.dumps({"type": "chunk", "text": chunk_text})
 
-            # Now try to extract the final structured evaluation from the stream text
             try:
                 data = self._extract_json(accumulated_text)
                 yield json.dumps({"type": "final", "data": data})
             except Exception:
-                # If extraction fails from text stream, perform a quick structured fallback
-                structured = await self.evaluate_answer(req, api_key)
+                structured = await self.evaluate_answer(req)
                 yield json.dumps({"type": "final", "data": structured.model_dump()})
                 
         except Exception as e:
             logger.error(f"Stream error: {e}")
             yield json.dumps({"type": "error", "message": str(e)})
 
-    async def generate_sample_answer(
-        self, req: SampleAnswerRequest, api_key: Optional[str] = None
-    ) -> SampleAnswerResponse:
+    async def generate_sample_answer(self, req: SampleAnswerRequest) -> SampleAnswerResponse:
         """
         Generates a model answer with crystal-clear student-friendly explanations,
         breakdown of core concepts, and interview pro tips.
         """
-        client = self.get_client(api_key)
+        client = self.get_client()
 
         prompt = f"""
 You are a senior mentor helping a {req.level} candidate ace their interview for:
@@ -382,13 +367,11 @@ Output MUST be a valid JSON object matching this schema:
             logger.error(f"Error generating sample answer: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate sample answer: {str(e)}")
 
-    async def stream_sample_answer(
-        self, req: SampleAnswerRequest, api_key: Optional[str] = None
-    ) -> AsyncGenerator[str, None]:
+    async def stream_sample_answer(self, req: SampleAnswerRequest) -> AsyncGenerator[str, None]:
         """
         Streams model answer in real time using Server-Sent Events (SSE).
         """
-        client = self.get_client(api_key)
+        client = self.get_client()
 
         prompt = f"""
 You are a senior mentor crafting a model interview answer for:
@@ -419,16 +402,13 @@ Stream the response in clean, formatted Markdown.
             logger.error(f"Stream sample answer error: {e}")
             yield json.dumps({"type": "error", "message": str(e)})
 
-    async def generate_interview_summary(
-        self, req: InterviewSummaryRequest, api_key: Optional[str] = None
-    ) -> InterviewSummaryResponse:
+    async def generate_interview_summary(self, req: InterviewSummaryRequest) -> InterviewSummaryResponse:
         """
         Aggregates individual question evaluations, generates an overall interview score,
         strength/weakness analysis, and a personalized preparation roadmap for the candidate.
         """
-        client = self.get_client(api_key)
+        client = self.get_client()
 
-        # Build transcript of review items
         reviews_summary = []
         individual_scores = []
         for r in req.reviews:

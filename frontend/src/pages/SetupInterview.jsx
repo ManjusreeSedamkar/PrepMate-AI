@@ -14,7 +14,7 @@ import {
 import { useInterview } from '../context/InterviewContext';
 
 export default function SetupInterview() {
-  const { startInterview, isGeneratingQuestions, interviewConfig, setInterviewConfig, serverConfig, customApiKey, setIsKeyModalOpen } = useInterview();
+  const { startInterview, isGeneratingQuestions, interviewConfig, setInterviewConfig, serverConfig } = useInterview();
 
   const [role, setRole] = useState(interviewConfig.role || 'Python Developer');
   const [customRole, setCustomRole] = useState('');
@@ -76,7 +76,7 @@ export default function SetupInterview() {
 
   const questionCounts = [5, 10, 15];
 
-  const hasKey = serverConfig?.has_server_api_key || Boolean(customApiKey);
+  const isConfigured = serverConfig?.has_server_api_key;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -115,23 +115,15 @@ export default function SetupInterview() {
         </p>
       </div>
 
-      {!hasKey && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start justify-between gap-3 text-xs">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-semibold text-amber-950">Gemini API Key Needed</p>
-              <p className="mt-0.5 text-amber-800">
-                You can configure your free Gemini API key before starting.
-              </p>
-            </div>
+      {serverConfig && !isConfigured && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3 text-xs shadow-xs">
+          <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-semibold text-amber-950">Backend Setup Note</p>
+            <p className="mt-0.5 text-amber-800 leading-relaxed">
+              The backend requires the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">GEMINI_API_KEY</code> environment variable in your backend <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">.env</code> file or Render deployment dashboard to generate questions.
+            </p>
           </div>
-          <button
-            onClick={() => setIsKeyModalOpen(true)}
-            className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold transition-colors flex-shrink-0 shadow-xs"
-          >
-            Enter Key
-          </button>
         </div>
       )}
 

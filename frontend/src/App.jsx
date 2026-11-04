@@ -2,13 +2,12 @@ import React from 'react';
 import { useInterview } from './context/InterviewContext';
 import Navbar from './components/Navbar';
 import ErrorAlert from './components/ErrorAlert';
-import ApiKeyModal from './components/ApiKeyModal';
 import Dashboard from './pages/Dashboard';
 import SetupInterview from './pages/SetupInterview';
 import InterviewSession from './pages/InterviewSession';
 import SummaryReport from './pages/SummaryReport';
 import HistoryPage from './pages/HistoryPage';
-import { Brain, Heart, Sparkles } from 'lucide-react';
+import { Brain, Sparkles } from 'lucide-react';
 
 export default function App() {
   const { activeTab } = useInterview();
@@ -28,9 +27,6 @@ export default function App() {
         {activeTab === 'summary' && <SummaryReport />}
         {activeTab === 'history' && <HistoryPage />}
       </main>
-
-      {/* API Key Modal */}
-      <ApiKeyModal />
 
       {/* Footer */}
       <footer className="w-full bg-white border-t border-slate-200/80 py-6 text-xs text-slate-500">

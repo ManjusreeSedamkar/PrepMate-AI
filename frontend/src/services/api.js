@@ -1,20 +1,15 @@
-const API_BASE = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api`
-  : '/api';
+const rawApiUrl = import.meta.env.VITE_API_URL;
+const formattedUrl = rawApiUrl
+  ? (rawApiUrl.startsWith('http://') || rawApiUrl.startsWith('https://')
+      ? rawApiUrl.replace(/\/$/, '')
+      : `https://${rawApiUrl.replace(/\/$/, '')}`)
+  : '';
 
-/**
- * Returns standard headers including optional client-supplied Gemini key.
- */
-function getHeaders(customApiKey = null) {
-  const headers = {
-    'Content-Type': 'application/json',
-  };
-  const key = customApiKey || localStorage.getItem('prepmate_gemini_api_key');
-  if (key) {
-    headers['X-Gemini-Api-Key'] = key;
-  }
-  return headers;
-}
+const API_BASE = formattedUrl ? `${formattedUrl}/api` : '/api';
+
+const HEADERS = {
+  'Content-Type': 'application/json',
+};
 
 /**
  * Checks server health and configuration.
@@ -30,10 +25,10 @@ export async function fetchServerConfig() {
 /**
  * Generate interview questions based on role, level, type, number.
  */
-export async function generateQuestions(payload, customApiKey = null) {
+export async function generateQuestions(payload) {
   const response = await fetch(`${API_BASE}/generate-questions`, {
     method: 'POST',
-    headers: getHeaders(customApiKey),
+    headers: HEADERS,
     body: JSON.stringify(payload),
   });
 
@@ -48,10 +43,10 @@ export async function generateQuestions(payload, customApiKey = null) {
 /**
  * Evaluates candidate answer.
  */
-export async function evaluateAnswer(payload, customApiKey = null) {
+export async function evaluateAnswer(payload) {
   const response = await fetch(`${API_BASE}/evaluate-answer`, {
     method: 'POST',
-    headers: getHeaders(customApiKey),
+    headers: HEADERS,
     body: JSON.stringify(payload),
   });
 
@@ -66,11 +61,11 @@ export async function evaluateAnswer(payload, customApiKey = null) {
 /**
  * Evaluates candidate answer with live SSE streaming.
  */
-export async function streamEvaluateAnswer(payload, customApiKey, onChunk, onFinal, onError) {
+export async function streamEvaluateAnswer(payload, onChunk, onFinal, onError) {
   try {
     const response = await fetch(`${API_BASE}/stream-evaluate-answer`, {
       method: 'POST',
-      headers: getHeaders(customApiKey),
+      headers: HEADERS,
       body: JSON.stringify(payload),
     });
 
@@ -119,10 +114,10 @@ export async function streamEvaluateAnswer(payload, customApiKey, onChunk, onFin
 /**
  * Generate a model answer with best practices.
  */
-export async function generateSampleAnswer(payload, customApiKey = null) {
+export async function generateSampleAnswer(payload) {
   const response = await fetch(`${API_BASE}/generate-sample-answer`, {
     method: 'POST',
-    headers: getHeaders(customApiKey),
+    headers: HEADERS,
     body: JSON.stringify(payload),
   });
 
@@ -137,11 +132,11 @@ export async function generateSampleAnswer(payload, customApiKey = null) {
 /**
  * Stream sample answer generation via SSE.
  */
-export async function streamSampleAnswer(payload, customApiKey, onChunk, onDone, onError) {
+export async function streamSampleAnswer(payload, onChunk, onDone, onError) {
   try {
     const response = await fetch(`${API_BASE}/stream-sample-answer`, {
       method: 'POST',
-      headers: getHeaders(customApiKey),
+      headers: HEADERS,
       body: JSON.stringify(payload),
     });
 
@@ -190,10 +185,10 @@ export async function streamSampleAnswer(payload, customApiKey, onChunk, onDone,
 /**
  * Generate comprehensive final interview summary.
  */
-export async function generateInterviewSummary(payload, customApiKey = null) {
+export async function generateInterviewSummary(payload) {
   const response = await fetch(`${API_BASE}/interview-summary`, {
     method: 'POST',
-    headers: getHeaders(customApiKey),
+    headers: HEADERS,
     body: JSON.stringify(payload),
   });
 

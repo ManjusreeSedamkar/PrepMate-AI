@@ -14,12 +14,8 @@ export function InterviewProvider({ children }) {
   // Navigation State
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'setup', 'session', 'summary', 'history'
 
-  // Server & Key State
+  // Server Config State
   const [serverConfig, setServerConfig] = useState(null);
-  const [customApiKey, setCustomApiKey] = useState(() => {
-    return localStorage.getItem('prepmate_gemini_api_key') || '';
-  });
-  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
 
   // Interview Setup State
   const [interviewConfig, setInterviewConfig] = useState({
@@ -46,7 +42,7 @@ export function InterviewProvider({ children }) {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [globalError, setGlobalError] = useState(null);
 
-  // Local storage history
+  // Local storage history (only stores candidate past scorecards, never API keys)
   const [history, setHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('prepmate_interview_history');
@@ -71,18 +67,6 @@ export function InterviewProvider({ children }) {
     }
   };
 
-  const saveCustomApiKey = (key) => {
-    const trimmed = key.trim();
-    setCustomApiKey(trimmed);
-    if (trimmed) {
-      localStorage.setItem('prepmate_gemini_api_key', trimmed);
-    } else {
-      localStorage.removeItem('prepmate_gemini_api_key');
-    }
-    setIsKeyModalOpen(false);
-    checkServer();
-  };
-
   /**
    * Starts a new interview: generates questions and navigates to session.
    */
@@ -92,7 +76,7 @@ export function InterviewProvider({ children }) {
     setInterviewConfig(config);
 
     try {
-      const response = await generateQuestions(config, customApiKey);
+      const response = await generateQuestions(config);
       if (!response.questions || response.questions.length === 0) {
         throw new Error('No questions returned by the AI.');
       }
@@ -138,7 +122,6 @@ export function InterviewProvider({ children }) {
       if (useStream) {
         await streamEvaluateAnswer(
           payload,
-          customApiKey,
           (chunk) => {
             setStreamCommentary((prev) => prev + chunk);
           },
@@ -152,7 +135,7 @@ export function InterviewProvider({ children }) {
           }
         );
       } else {
-        const evaluation = await evaluateAnswer(payload, customApiKey);
+        const evaluation = await evaluateAnswer(payload);
         setEvaluations((prev) => ({ ...prev, [questionNumber]: evaluation }));
         setIsEvaluating(false);
       }
@@ -178,7 +161,7 @@ export function InterviewProvider({ children }) {
     };
 
     try {
-      const res = await generateSampleAnswer(payload, customApiKey);
+      const res = await generateSampleAnswer(payload);
       setSampleAnswers((prev) => ({ ...prev, [questionNumber]: res }));
       return res;
     } catch (err) {
@@ -217,7 +200,7 @@ export function InterviewProvider({ children }) {
     };
 
     try {
-      const summary = await generateInterviewSummary(payload, customApiKey);
+      const summary = await generateInterviewSummary(payload);
       setFinalSummary(summary);
 
       // Save to localStorage history
@@ -282,10 +265,6 @@ export function InterviewProvider({ children }) {
     activeTab,
     setActiveTab,
     serverConfig,
-    customApiKey,
-    saveCustomApiKey,
-    isKeyModalOpen,
-    setIsKeyModalOpen,
     interviewConfig,
     setInterviewConfig,
     questions,

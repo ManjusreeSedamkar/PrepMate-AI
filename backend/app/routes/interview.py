@@ -1,7 +1,5 @@
-import json
 import logging
-from typing import Optional
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
 
 from app.config import settings
@@ -36,69 +34,51 @@ async def get_config():
     }
 
 @router.post("/generate-questions", response_model=GenerateQuestionsResponse)
-async def generate_questions(
-    request: GenerateQuestionsRequest,
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key")
-):
+async def generate_questions(request: GenerateQuestionsRequest):
     """
     Generate tailored interview questions based on role, level, interview type, and topics.
     """
-    return await gemini_service.generate_questions(request, api_key=x_gemini_api_key)
+    return await gemini_service.generate_questions(request)
 
 @router.post("/evaluate-answer", response_model=EvaluateAnswerResponse)
-async def evaluate_answer(
-    request: EvaluateAnswerRequest,
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key")
-):
+async def evaluate_answer(request: EvaluateAnswerRequest):
     """
     Evaluate candidate's answer with scores, strengths, missing concepts, and improvement recommendations.
     """
-    return await gemini_service.evaluate_answer(request, api_key=x_gemini_api_key)
+    return await gemini_service.evaluate_answer(request)
 
 @router.post("/stream-evaluate-answer")
-async def stream_evaluate_answer(
-    request: EvaluateAnswerRequest,
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key")
-):
+async def stream_evaluate_answer(request: EvaluateAnswerRequest):
     """
-    Streams answer evaluation via Server-Sent Events (SSE).
+    Streams answer evaluation live via Server-Sent Events (SSE).
     """
     async def event_generator():
-        async for chunk in gemini_service.stream_evaluate_answer(request, api_key=x_gemini_api_key):
+        async for chunk in gemini_service.stream_evaluate_answer(request):
             yield {"data": chunk}
 
     return EventSourceResponse(event_generator())
 
 @router.post("/generate-sample-answer", response_model=SampleAnswerResponse)
-async def generate_sample_answer(
-    request: SampleAnswerRequest,
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key")
-):
+async def generate_sample_answer(request: SampleAnswerRequest):
     """
     Generate an ideal structured model answer with key takeaways and pro tips.
     """
-    return await gemini_service.generate_sample_answer(request, api_key=x_gemini_api_key)
+    return await gemini_service.generate_sample_answer(request)
 
 @router.post("/stream-sample-answer")
-async def stream_sample_answer(
-    request: SampleAnswerRequest,
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key")
-):
+async def stream_sample_answer(request: SampleAnswerRequest):
     """
-    Streams sample answer generation via Server-Sent Events (SSE).
+    Streams sample answer generation live via Server-Sent Events (SSE).
     """
     async def event_generator():
-        async for chunk in gemini_service.stream_sample_answer(request, api_key=x_gemini_api_key):
+        async for chunk in gemini_service.stream_sample_answer(request):
             yield {"data": chunk}
 
     return EventSourceResponse(event_generator())
 
 @router.post("/interview-summary", response_model=InterviewSummaryResponse)
-async def generate_interview_summary(
-    request: InterviewSummaryRequest,
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key")
-):
+async def generate_interview_summary(request: InterviewSummaryRequest):
     """
     Aggregate all question reviews into an overall scorecard, strengths/weaknesses, and preparation roadmap.
     """
-    return await gemini_service.generate_interview_summary(request, api_key=x_gemini_api_key)
+    return await gemini_service.generate_interview_summary(request)
