@@ -2,7 +2,10 @@ import os
 from typing import List
 from dotenv import load_dotenv
 
-# Load environment variables from .env file if available
+# Load environment variables from .env file (check backend/.env, root .env, or system)
+backend_env = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+if os.path.exists(backend_env):
+    load_dotenv(dotenv_path=backend_env)
 load_dotenv()
 
 class Settings:
@@ -12,7 +15,7 @@ class Settings:
     
     # Gemini Configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
     
     # Server Configuration
     HOST: str = os.getenv("HOST", "0.0.0.0")

@@ -49,7 +49,19 @@ class GeminiService:
 
     @property
     def model_name(self) -> str:
-        return settings.GEMINI_MODEL or "gemini-2.5-flash"
+        return settings.GEMINI_MODEL or "gemini-3.8-flash"
+
+    def _format_api_error(self, e: Exception) -> str:
+        err_msg = str(e)
+        if "503" in err_msg or "high demand" in err_msg.lower() or "unavailable" in err_msg.lower():
+            return "The Gemini AI model is currently experiencing temporary high demand from Google. Please try again in a few moments."
+        if "404" in err_msg or "not found" in err_msg.lower():
+            return f"The configured Gemini model '{self.model_name}' was not found. Please verify GEMINI_MODEL."
+        if "429" in err_msg or "quota" in err_msg.lower() or "exhausted" in err_msg.lower():
+            return "Gemini API rate limit or quota exceeded. Please wait a moment before trying again."
+        if "api_key" in err_msg.lower() or "key not valid" in err_msg.lower():
+            return "Invalid Gemini API Key. Please verify your GEMINI_API_KEY in backend/.env."
+        return f"Gemini API error: {err_msg}"
 
     def _extract_json(self, raw_text: str) -> Dict[str, Any]:
         """
@@ -160,7 +172,7 @@ Output MUST be a valid JSON array of objects with the following schema:
             )
         except APIError as e:
             logger.error(f"Gemini API error during generate_questions: {e}")
-            raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
+            raise HTTPException(status_code=502, detail=self._format_api_error(e))
         except Exception as e:
             logger.error(f"Error generating questions: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate questions: {str(e)}")
@@ -248,7 +260,7 @@ Output MUST be a valid JSON object with this exact schema:
             )
         except APIError as e:
             logger.error(f"Gemini API error during evaluate_answer: {e}")
-            raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
+            raise HTTPException(status_code=502, detail=self._format_api_error(e))
         except Exception as e:
             logger.error(f"Error evaluating answer: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to evaluate answer: {str(e)}")
@@ -362,7 +374,7 @@ Output MUST be a valid JSON object matching this schema:
             )
         except APIError as e:
             logger.error(f"Gemini API error during generate_sample_answer: {e}")
-            raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
+            raise HTTPException(status_code=502, detail=self._format_api_error(e))
         except Exception as e:
             logger.error(f"Error generating sample answer: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate sample answer: {str(e)}")
@@ -496,7 +508,7 @@ Output MUST be a valid JSON object matching this schema:
             )
         except APIError as e:
             logger.error(f"Gemini API error during generate_interview_summary: {e}")
-            raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
+            raise HTTPException(status_code=502, detail=self._format_api_error(e))
         except Exception as e:
             logger.error(f"Error generating interview summary: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")

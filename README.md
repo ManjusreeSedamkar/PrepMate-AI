@@ -8,7 +8,7 @@
 
 **PrepMate AI** is a full-stack, responsive, AI-powered web application that helps students, freshers, and job seekers prepare for technical and HR interviews using Generative AI. 
 
-Powered by the official **Google Gen AI SDK** and **Gemini 2.5 Flash**, PrepMate AI delivers realistic interview questions, real-time Server-Sent Events (SSE) answer evaluation, multi-dimensional scoring (out of 10), student-friendly model answers, and a final performance scorecard with an actionable preparation roadmap.
+Powered by the official **Google Gen AI SDK** and **Gemini 3.8 Flash**, PrepMate AI delivers realistic interview questions, real-time Server-Sent Events (SSE) answer evaluation, multi-dimensional scoring (out of 10), student-friendly model answers, and a final performance scorecard with an actionable preparation roadmap.
 
 ---
 
@@ -80,7 +80,7 @@ Powered by the official **Google Gen AI SDK** and **Gemini 2.5 Flash**, PrepMate
                                       ▼
                        ┌───────────────────────────────┐
                        │      Google Gemini API        │
-                       │      (gemini-2.5-flash)       │
+                       │      (gemini-3.8-flash)       │
                        └───────────────────────────────┘
 ```
 
@@ -168,7 +168,7 @@ PrepMate AI/
    Edit `.env` and set your `GEMINI_API_KEY`:
    ```env
    GEMINI_API_KEY=your_actual_gemini_api_key_here
-   GEMINI_MODEL=gemini-2.5-flash
+   GEMINI_MODEL=gemini-3.8-flash
    PORT=8000
    HOST=0.0.0.0
    CORS_ORIGINS=*
@@ -245,7 +245,7 @@ You can deploy PrepMate AI on Render using either **Render Blueprints (`render.y
 - **Environment Variables:**
   - `PYTHON_VERSION`: `3.11.9`
   - `GEMINI_API_KEY`: `<Your-Gemini-API-Key>`
-  - `GEMINI_MODEL`: `gemini-2.5-flash`
+  - `GEMINI_MODEL`: `gemini-3.8-flash`
   - `CORS_ORIGINS`: `*`
 - Note your deployed backend URL: e.g. `https://prepmate-ai-backend.onrender.com`
 
