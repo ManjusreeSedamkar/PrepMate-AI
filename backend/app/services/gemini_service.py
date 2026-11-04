@@ -51,6 +51,61 @@ class GeminiService:
     def model_name(self) -> str:
         return settings.GEMINI_MODEL or "gemini-3.8-flash"
 
+    def _get_candidate_models(self) -> List[str]:
+        primary = self.model_name
+        candidates = [primary]
+        for fallback in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]:
+            if fallback not in candidates:
+                candidates.append(fallback)
+        return candidates
+
+    def _is_recoverable_model_error(self, err_str: str) -> bool:
+        recoverable_indicators = [
+            "503", "429", "404", "high demand", "unavailable",
+            "resource_exhausted", "quota", "rate limit", "too many requests", "not found"
+        ]
+        return any(ind in err_str for ind in recoverable_indicators)
+
+    def _generate_content_with_fallback(self, contents, config=None):
+        client = self.get_client()
+        last_err = None
+        for model in self._get_candidate_models():
+            try:
+                logger.info(f"Generating content with model: {model}")
+                return client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config
+                )
+            except Exception as e:
+                last_err = e
+                err_str = str(e).lower()
+                if self._is_recoverable_model_error(err_str):
+                    logger.warning(f"Model {model} hit recoverable error ({e}). Trying fallback model...")
+                    continue
+                raise e
+        raise last_err
+
+    def _generate_content_stream_with_fallback(self, contents, config=None):
+        client = self.get_client()
+        last_err = None
+        for model in self._get_candidate_models():
+            try:
+                logger.info(f"Starting content stream with model: {model}")
+                return client.models.generate_content_stream(
+                    model=model,
+                    contents=contents,
+                    config=config
+                )
+            except Exception as e:
+                last_err = e
+                err_str = str(e).lower()
+                if self._is_recoverable_model_error(err_str):
+                    logger.warning(f"Model {model} hit recoverable error ({e}) during stream. Trying fallback model...")
+                    continue
+                raise e
+        raise last_err
+
     def _format_api_error(self, e: Exception) -> str:
         err_msg = str(e)
         if "503" in err_msg or "high demand" in err_msg.lower() or "unavailable" in err_msg.lower():
@@ -63,52 +118,65 @@ class GeminiService:
             return "Invalid Gemini API Key. Please verify your GEMINI_API_KEY in backend/.env."
         return f"Gemini API error: {err_msg}"
 
-    def _extract_json(self, raw_text: str) -> Dict[str, Any]:
+    def _extract_json(self, raw_text: str) -> Any:
         """
         Extracts and parses JSON object or array safely from Gemini response text.
-        Handles markdown blocks, raw JSON strings, and surrounding conversational text.
+        Handles markdown blocks, raw JSON strings, single-quoted dicts, and unescaped control characters.
         """
+        import ast
         text = raw_text.strip()
-        # Remove ```json and ``` if present
         if "```" in text:
             match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
             if match:
                 text = match.group(1).strip()
         
         try:
-            return json.loads(text)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Initial JSON parse failed: {e}. Attempting substring extraction...")
-            # Look for outer { ... } or [ ... ]
-            first_brace = text.find("{")
-            first_bracket = text.find("[")
-            
-            if first_brace != -1 and (first_bracket == -1 or first_brace < first_bracket):
-                last_brace = text.rfind("}")
-                if last_brace != -1:
-                    candidate = text[first_brace:last_brace + 1]
-                    return json.loads(candidate)
-            elif first_bracket != -1:
-                last_bracket = text.rfind("]")
-                if last_bracket != -1:
-                    candidate = text[first_bracket:last_bracket + 1]
-                    return json.loads(candidate)
-            
-            raise ValueError(f"Could not parse valid JSON from AI response: {text[:200]}") from e
+            return json.loads(text, strict=False)
+        except Exception:
+            pass
+
+        # Substring search for outermost { } or [ ]
+        first_brace = text.find("{")
+        first_bracket = text.find("[")
+        candidate = None
+        if first_brace != -1 and (first_bracket == -1 or first_brace < first_bracket):
+            last_brace = text.rfind("}")
+            if last_brace != -1:
+                candidate = text[first_brace:last_brace + 1]
+        elif first_bracket != -1:
+            last_bracket = text.rfind("]")
+            if last_bracket != -1:
+                candidate = text[first_bracket:last_bracket + 1]
+        
+        if candidate:
+            try:
+                return json.loads(candidate, strict=False)
+            except Exception:
+                pass
+            try:
+                return ast.literal_eval(candidate)
+            except Exception:
+                pass
+        
+        try:
+            return ast.literal_eval(text)
+        except Exception:
+            pass
+
+        raise ValueError(f"Could not parse valid JSON from AI response: {text[:200]}")
 
     async def generate_questions(self, req: GenerateQuestionsRequest) -> GenerateQuestionsResponse:
         """
         Generates realistic, non-repetitive interview questions tailored to
         role, seniority, interview type, and specific topics.
         """
-        client = self.get_client()
-
+        resolved_type = req.resolved_interview_type
         prompt = f"""
 You are an expert technical interviewer and hiring manager at a top-tier tech company.
 Generate an interview question set with the following specifications:
 - Role: {req.role}
 - Experience Level: {req.level} (e.g. Beginner: fundamental concepts, core syntax, simple problems; Intermediate: architecture, tradeoffs, performance, practical debugging; Advanced: system design, concurrency, scalability, enterprise patterns)
-- Interview Type: {req.interview_type} (Technical, HR, or Mixed)
+- Interview Type: {resolved_type} (Technical, HR, or Mixed)
 - Number of Questions: {req.num_questions}
 - Specific Topics of Focus: {req.topics if req.topics else 'Standard comprehensive industry scope for this role'}
 
@@ -133,8 +201,7 @@ Output MUST be a valid JSON array of objects with the following schema:
 ]
 """
         try:
-            response = client.models.generate_content(
-                model=self.model_name,
+            response = self._generate_content_with_fallback(
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -157,7 +224,7 @@ Output MUST be a valid JSON array of objects with the following schema:
                         id=q.get("id", idx),
                         question_number=idx,
                         question=q.get("question", f"Question {idx}"),
-                        category=q.get("category", req.interview_type),
+                        category=q.get("category", resolved_type),
                         difficulty=q.get("difficulty", req.level),
                         hint=q.get("hint")
                     )
@@ -167,7 +234,7 @@ Output MUST be a valid JSON array of objects with the following schema:
                 questions=items,
                 role=req.role,
                 level=req.level,
-                interview_type=req.interview_type,
+                interview_type=resolved_type,
                 total_questions=len(items)
             )
         except APIError as e:
@@ -232,8 +299,7 @@ Output MUST be a valid JSON object with this exact schema:
 }}
 """
         try:
-            response = client.models.generate_content(
-                model=self.model_name,
+            response = self._generate_content_with_fallback(
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -291,28 +357,40 @@ Evaluate this answer. First, provide your live expert commentary. Then, conclude
 - missing_concepts (list)
 - improvements (list)
 """
-        try:
-            stream = client.models.generate_content_stream(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.3)
-            )
-            accumulated_text = ""
-            for chunk in stream:
-                chunk_text = chunk.text or ""
-                accumulated_text += chunk_text
-                yield json.dumps({"type": "chunk", "text": chunk_text})
+        accumulated_text = ""
+        stream_started = False
+        client = self.get_client()
 
+        for model in self._get_candidate_models():
             try:
-                data = self._extract_json(accumulated_text)
-                yield json.dumps({"type": "final", "data": data})
-            except Exception:
-                structured = await self.evaluate_answer(req)
-                yield json.dumps({"type": "final", "data": structured.model_dump()})
-                
-        except Exception as e:
-            logger.error(f"Stream error: {e}")
-            yield json.dumps({"type": "error", "message": str(e)})
+                logger.info(f"Streaming evaluate answer with model: {model}")
+                stream = client.models.generate_content_stream(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0.3)
+                )
+                for chunk in stream:
+                    stream_started = True
+                    chunk_text = chunk.text or ""
+                    accumulated_text += chunk_text
+                    yield json.dumps({"type": "chunk", "text": chunk_text})
+
+                break
+            except Exception as e:
+                err_str = str(e).lower()
+                if not stream_started and self._is_recoverable_model_error(err_str):
+                    logger.warning(f"Streaming on {model} hit recoverable error ({e}). Trying fallback...")
+                    continue
+                logger.error(f"Stream error: {e}")
+                yield json.dumps({"type": "error", "message": self._format_api_error(e)})
+                return
+
+        try:
+            data = self._extract_json(accumulated_text)
+            yield json.dumps({"type": "final", "data": data})
+        except Exception:
+            structured = await self.evaluate_answer(req)
+            yield json.dumps({"type": "final", "data": structured.model_dump()})
 
     async def generate_sample_answer(self, req: SampleAnswerRequest) -> SampleAnswerResponse:
         """
@@ -356,22 +434,30 @@ Output MUST be a valid JSON object matching this schema:
 }}
 """
         try:
-            response = client.models.generate_content(
-                model=self.model_name,
+            response = self._generate_content_with_fallback(
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.5,
                 )
             )
-            data = self._extract_json(response.text)
-            
-            return SampleAnswerResponse(
-                sample_answer=data.get("sample_answer", "Model answer could not be generated."),
-                structure_breakdown=data.get("structure_breakdown"),
-                key_points=data.get("key_points", []),
-                pro_tips=data.get("pro_tips", []),
-            )
+            try:
+                data = self._extract_json(response.text)
+                return SampleAnswerResponse(
+                    sample_answer=data.get("sample_answer", response.text.strip()),
+                    structure_breakdown=data.get("structure_breakdown", "Core Definition -> Deep Dive -> Best Practices"),
+                    key_points=data.get("key_points", ["Review core syntax and behavior", "Understand performance trade-offs"]),
+                    pro_tips=data.get("pro_tips", ["Answer with clarity and provide concrete examples", "Highlight edge cases"]),
+                )
+            except Exception as parse_err:
+                logger.warning(f"Could not parse strict JSON in sample answer: {parse_err}. Using text directly.")
+                clean_text = response.text.replace("```json", "").replace("```", "").strip()
+                return SampleAnswerResponse(
+                    sample_answer=clean_text,
+                    structure_breakdown="Direct Model Response",
+                    key_points=["Review core architectural concepts", "Articulate trade-offs clearly"],
+                    pro_tips=["Practice delivering this explanation in under 2 minutes"]
+                )
         except APIError as e:
             logger.error(f"Gemini API error during generate_sample_answer: {e}")
             raise HTTPException(status_code=502, detail=self._format_api_error(e))
@@ -399,20 +485,31 @@ Provide a structured, engaging model answer:
 
 Stream the response in clean, formatted Markdown.
 """
-        try:
-            stream = client.models.generate_content_stream(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.4)
-            )
-            for chunk in stream:
-                chunk_text = chunk.text or ""
-                yield json.dumps({"type": "chunk", "text": chunk_text})
+        client = self.get_client()
+        stream_started = False
+        for model in self._get_candidate_models():
+            try:
+                logger.info(f"Streaming sample answer with model: {model}")
+                stream = client.models.generate_content_stream(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0.4)
+                )
+                for chunk in stream:
+                    stream_started = True
+                    chunk_text = chunk.text or ""
+                    yield json.dumps({"type": "chunk", "text": chunk_text})
 
-            yield json.dumps({"type": "done"})
-        except Exception as e:
-            logger.error(f"Stream sample answer error: {e}")
-            yield json.dumps({"type": "error", "message": str(e)})
+                yield json.dumps({"type": "done"})
+                return
+            except Exception as e:
+                err_str = str(e).lower()
+                if not stream_started and self._is_recoverable_model_error(err_str):
+                    logger.warning(f"Stream sample answer on {model} hit recoverable error ({e}). Trying fallback...")
+                    continue
+                logger.error(f"Stream sample answer error: {e}")
+                yield json.dumps({"type": "error", "message": self._format_api_error(e)})
+                return
 
     async def generate_interview_summary(self, req: InterviewSummaryRequest) -> InterviewSummaryResponse:
         """
@@ -440,7 +537,7 @@ Stream the response in clean, formatted Markdown.
 You are the Lead Hiring Panelist delivering the final interview feedback report for:
 - Candidate Role: {req.role}
 - Experience Level: {req.level}
-- Interview Type: {req.interview_type}
+- Interview Type: {req.resolved_interview_type}
 - Total Questions Answered: {len(req.reviews)}
 - Average Question Score: {avg_score} / 10
 
@@ -482,30 +579,48 @@ Output MUST be a valid JSON object matching this schema:
 }}
 """
         try:
-            response = client.models.generate_content(
-                model=self.model_name,
+            response = self._generate_content_with_fallback(
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.4,
                 )
             )
-            data = self._extract_json(response.text)
-            
-            calculated_score = float(data.get("overall_score", avg_score))
-            calculated_score = round(max(0.0, min(10.0, calculated_score)), 1)
-            
-            return InterviewSummaryResponse(
-                overall_score=calculated_score,
-                performance_level=data.get("performance_level", "Proficient"),
-                total_questions_answered=len(req.reviews),
-                individual_scores=individual_scores,
-                strengths=data.get("strengths", ["Demonstrated general domain understanding."]),
-                weaknesses=data.get("weaknesses", ["Some technical nuances were omitted."]),
-                areas_for_improvement=data.get("areas_for_improvement", ["Review core design patterns."]),
-                preparation_roadmap=data.get("preparation_roadmap", ["Continue practicing problem-solving scenarios."]),
-                final_verdict=data.get("final_verdict", "Good overall interview effort with great room for growth."),
-            )
+            try:
+                data = self._extract_json(response.text)
+                calculated_score = float(data.get("overall_score", avg_score))
+                calculated_score = round(max(0.0, min(10.0, calculated_score)), 1)
+                
+                return InterviewSummaryResponse(
+                    overall_score=calculated_score,
+                    performance_level=data.get("performance_level", "Proficient"),
+                    total_questions_answered=len(req.reviews),
+                    individual_scores=individual_scores,
+                    strengths=data.get("strengths", ["Demonstrated general domain understanding."]),
+                    weaknesses=data.get("weaknesses", ["Some technical nuances were omitted."]),
+                    areas_for_improvement=data.get("areas_for_improvement", ["Review core design patterns."]),
+                    preparation_roadmap=data.get("preparation_roadmap", ["Continue practicing problem-solving scenarios."]),
+                    final_verdict=data.get("final_verdict", "Good overall interview effort with great room for growth."),
+                )
+            except Exception as parse_err:
+                logger.warning(f"Fallback parsing for interview_summary: {parse_err}")
+                perf_level = "Excellent" if avg_score >= 8.0 else ("Proficient" if avg_score >= 6.5 else ("Developing" if avg_score >= 5.0 else "Needs Improvement"))
+                clean_text = response.text.replace("```json", "").replace("```", "").strip()[:400]
+                return InterviewSummaryResponse(
+                    overall_score=avg_score,
+                    performance_level=perf_level,
+                    total_questions_answered=len(req.reviews),
+                    individual_scores=individual_scores,
+                    strengths=["Solid fundamental understanding of the core stack."],
+                    weaknesses=["Some edge-case handling and depth can be expanded."],
+                    areas_for_improvement=["Practice explaining trade-offs and architectural decisions."],
+                    preparation_roadmap=[
+                        "Step 1: Revise core data structures and asynchronous patterns",
+                        "Step 2: Build a focused mini-project with end-to-end tests",
+                        "Step 3: Conduct mock timed interviews"
+                    ],
+                    final_verdict=clean_text or "Good overall interview effort with solid potential for the role."
+                )
         except APIError as e:
             logger.error(f"Gemini API error during generate_interview_summary: {e}")
             raise HTTPException(status_code=502, detail=self._format_api_error(e))

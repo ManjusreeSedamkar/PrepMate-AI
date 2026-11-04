@@ -192,11 +192,20 @@ export function InterviewProvider({ children }) {
       };
     });
 
+    const resolvedType = interviewConfig.interview_type || interviewConfig.interviewType || 'Technical';
     const payload = {
-      role: interviewConfig.role,
-      level: interviewConfig.level,
-      interview_type: interviewConfig.interviewType,
-      reviews,
+      role: interviewConfig.role || 'Software Engineer',
+      level: interviewConfig.level || 'Intermediate',
+      interview_type: resolvedType,
+      interviewType: resolvedType,
+      reviews: reviews.map((r) => ({
+        question_number: Number(r.question_number) || 1,
+        question: String(r.question || ''),
+        user_answer: String(r.user_answer || ''),
+        score: typeof r.score === 'number' ? r.score : parseFloat(r.score) || 0.0,
+        strengths: Array.isArray(r.strengths) ? r.strengths : [],
+        missing_concepts: Array.isArray(r.missing_concepts) ? r.missing_concepts : [],
+      })),
     };
 
     try {

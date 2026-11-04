@@ -13,9 +13,14 @@ class QuestionItem(BaseModel):
 class GenerateQuestionsRequest(BaseModel):
     role: str = Field(..., example="Python Developer")
     level: str = Field(..., example="Intermediate")
-    interview_type: str = Field(..., example="Technical")
+    interview_type: Optional[str] = Field(default="Technical", example="Technical")
+    interviewType: Optional[str] = None
     num_questions: int = Field(5, ge=1, le=20)
     topics: Optional[str] = Field(None, example="FastAPI, Docker, AsyncIO, Database optimization")
+
+    @property
+    def resolved_interview_type(self) -> str:
+        return self.interview_type or self.interviewType or "Technical"
 
 class GenerateQuestionsResponse(BaseModel):
     questions: List[QuestionItem]
@@ -61,18 +66,23 @@ class SampleAnswerResponse(BaseModel):
 
 # --- Interview Summary Models ---
 class QuestionReviewItem(BaseModel):
-    question_number: int
-    question: str
-    user_answer: str
-    score: float
-    strengths: List[str] = []
-    missing_concepts: List[str] = []
+    question_number: Optional[int] = 1
+    question: Optional[str] = ""
+    user_answer: Optional[str] = ""
+    score: Optional[float] = 0.0
+    strengths: Optional[List[str]] = Field(default_factory=list)
+    missing_concepts: Optional[List[str]] = Field(default_factory=list)
 
 class InterviewSummaryRequest(BaseModel):
     role: str
     level: str
-    interview_type: str
-    reviews: List[QuestionReviewItem]
+    interview_type: Optional[str] = "Technical"
+    interviewType: Optional[str] = None
+    reviews: Optional[List[QuestionReviewItem]] = Field(default_factory=list)
+
+    @property
+    def resolved_interview_type(self) -> str:
+        return self.interview_type or self.interviewType or "Technical"
 
 class CategoryScore(BaseModel):
     category: str

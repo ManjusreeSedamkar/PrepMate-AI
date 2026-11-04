@@ -86,7 +86,9 @@ export default function SetupInterview() {
       role: finalRole,
       level,
       interview_type: interviewType,
+      interviewType: interviewType,
       num_questions: Number(numQuestions),
+      numQuestions: Number(numQuestions),
       topics: topics.trim() || null,
     };
 
